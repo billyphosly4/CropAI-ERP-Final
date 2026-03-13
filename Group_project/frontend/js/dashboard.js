@@ -1,6 +1,6 @@
 /**
  * Dashboard Controller
- * Manages sensor polling, AI image analysis, and user personalization.
+ * Manages sensor polling, AI image analysis, user personalization, and alerts.
  */
 
 const API_BASE_URL = '/api'; 
@@ -13,10 +13,11 @@ const imageInput = document.getElementById('imageInput');
 const analysisModal = document.getElementById('analysisModal');
 const analysisResult = document.getElementById('analysisResult');
 const loadingSpinner = document.getElementById('loading-spinner');
+const alertsList = document.getElementById('alertsList'); // Added Alerts DOM
 
 document.addEventListener('DOMContentLoaded', () => {
     startSensorPolling();
-    fetchUserProfile(); // Automatically fetch and display the user's name
+    fetchUserProfile(); 
     
     // Preview image on selection
     if(imageInput) {
@@ -34,10 +35,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// --- PERSONALIZATION LOGIC ---
+// --- 1. PERSONALIZATION LOGIC ---
 async function fetchUserProfile() {
     const token = localStorage.getItem('token');
-    if (!token) return; // Leave as "Farm Overview" if guest
+    if (!token) return; // Leave as "Farmer" if it's a guest
 
     try {
         const response = await fetch(`${API_BASE_URL}/auth/profile`, {
@@ -46,11 +47,12 @@ async function fetchUserProfile() {
         
         if (response.ok) {
             const data = await response.json();
-            // Capitalize first name and update the DOM
             const firstName = data.fullName.split(' ')[0];
-            const welcomeTitle = document.getElementById('welcome-title');
-            if (welcomeTitle) {
-                welcomeTitle.textContent = `Welcome, ${firstName}!`;
+            
+            // Specifically target the span, not the whole H1
+            const welcomeName = document.getElementById('welcome-name');
+            if (welcomeName) {
+                welcomeName.textContent = firstName;
             }
         }
     } catch (err) {
@@ -58,12 +60,11 @@ async function fetchUserProfile() {
     }
 }
 
-// --- AI SCANNER LOGIC ---
+// --- 2. AI SCANNER LOGIC (SMART ROUTING) ---
 async function analyzeImage() {
     const file = imageInput.files[0];
     if (!file) return;
 
-    // Show the modal as a flexbox to center it
     analysisModal.style.display = 'flex';
     loadingSpinner.style.display = 'block';
     analysisResult.style.display = 'none';
@@ -71,20 +72,24 @@ async function analyzeImage() {
     const formData = new FormData();
     formData.append('image', file);
     
+    // Check if user is logged in to decide which endpoint to hit
+    const token = localStorage.getItem('token');
+    const endpoint = token ? `${API_BASE_URL}/ai/detect` : `${API_BASE_URL}/ai/public-detect`;
+    
+    // Setup headers (only include Authorization if token exists)
+    const headers = { 'ngrok-skip-browser-warning': 'true' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     try {
-        const response = await fetch(`${API_BASE_URL}/ai/detect`, {
+        const response = await fetch(endpoint, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                'ngrok-skip-browser-warning': 'true' 
-            },
+            headers: headers,
             body: formData
         });
 
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Analysis failed');
 
-        // Hide spinner and show results
         loadingSpinner.style.display = 'none';
         displayResults(result.data);
 
@@ -102,11 +107,12 @@ function displayResults(data) {
     
     const badge = document.getElementById('severityBadge');
     badge.textContent = data.status;
+    // Ensure CSS classes match the status output (e.g., .healthy, .infected)
     badge.className = `severity ${data.status.toLowerCase()}`;
 
-    const treatments = data.treatments 
+    const treatments = data.treatments && data.treatments.length > 0
         ? data.treatments.map(t => `<li style="margin-bottom:8px;"><i class="fas fa-check-circle" style="color:#2ecc71;"></i> ${t}</li>`).join('')
-        : "No treatment needed.";
+        : "No specific treatment required.";
         
     document.getElementById('treatment').innerHTML = `<ul style="list-style:none; padding:0; font-size:0.9rem;">${treatments}</ul>`;
 }
@@ -122,19 +128,39 @@ function closeModal() {
     resetUpload();
 }
 
-// --- IOT SENSOR POLLING ---
+// --- 3. IOT SENSOR POLLING & ALERTS ---
 function startSensorPolling() {
     const fetchSensors = async () => {
         try {
             const res = await fetch(`${API_BASE_URL}/iot/sensors/latest`);
             const data = await res.json();
-            if (data.temperature) {
+            
+            if (data.temperature !== undefined) {
+                // Update numerical values
                 document.getElementById('temperatureValue').textContent = `${data.temperature}°C`;
                 document.getElementById('moistureValue').textContent = `${data.soilMoisture}%`;
                 document.getElementById('humidityValue').textContent = `${data.humidity}%`;
+
+                // Check for critical conditions and update the alerts UI
+                if (alertsList) {
+                    if (data.soilMoisture < 30) {
+                        alertsList.innerHTML = `
+                            <div style="background: #fee2e2; color: #991b1b; padding: 15px; border-radius: 8px; border-left: 5px solid #ef4444; margin-bottom: 10px; font-weight: 500;">
+                                <i class="fas fa-exclamation-triangle"></i> CRITICAL: Soil moisture low. Irrigate soon.
+                            </div>`;
+                    } else {
+                        alertsList.innerHTML = `
+                            <div style="background: #dcfce7; color: #166534; padding: 15px; border-radius: 8px; border-left: 5px solid #22c55e; margin-bottom: 10px; font-weight: 500;">
+                                <i class="fas fa-check-circle"></i> Farm conditions are optimal.
+                            </div>`;
+                    }
+                }
             }
-        } catch (e) { console.warn("Sensor sync idle..."); }
+        } catch (e) { 
+            console.warn("Sensor sync idle. Is the simulator running?"); 
+        }
     };
-    fetchSensors();
-    setInterval(fetchSensors, 5000);
+    
+    fetchSensors(); // Run immediately
+    setInterval(fetchSensors, 5000); // Poll every 5 seconds
 }

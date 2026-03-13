@@ -7,6 +7,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const registerForm = document.getElementById('register-form');
     const loginForm = document.getElementById('login-form');
 
+    // ==========================================
+    // NEW: HANDLE EMAIL VERIFICATION REDIRECT
+    // ==========================================
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('verified') === 'true' && loginForm) {
+        // Create a beautiful success banner
+        const successBanner = document.createElement('div');
+        successBanner.style.cssText = `
+            background: #d4edda; 
+            color: #155724; 
+            padding: 1rem; 
+            border-radius: 8px; 
+            margin-bottom: 1.5rem; 
+            text-align: center; 
+            border: 1px solid #c3e6cb;
+            font-weight: 600;
+        `;
+        successBanner.innerHTML = '<i class="fas fa-check-circle"></i> Email verified successfully! You may now log in.';
+        
+        // Insert it right above the login form
+        loginForm.parentNode.insertBefore(successBanner, loginForm);
+        
+        // Clean up the URL so it doesn't stay there if they refresh
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     // 1. UPDATED REGISTRATION LOGIC
     if (registerForm) {
         registerForm.addEventListener('submit', async (e) => {
@@ -32,17 +58,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch('/api/auth/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        fullName, // Sending Full Name to be saved in profile table
-                        email, 
-                        password 
-                    })
+                    body: JSON.stringify({ fullName, email, password })
                 });
                 
                 const data = await response.json();
                 
                 if (response.ok) {
-                    alert('Account created successfully! Please log in.');
+                    // Tell them to check their email!
+                    alert('Account created successfully! Please check your email to verify your account.');
                     window.location.href = 'login.html'; 
                 } else { 
                     throw new Error(data.error || 'Registration failed'); 
@@ -50,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) { 
                 alert(error.message); 
             } finally { 
-                submitBtn.textContent = 'Register'; 
+                submitBtn.innerHTML = 'Create My Account <i class="fas fa-check-circle" style="margin-left: 8px;"></i>'; 
                 submitBtn.disabled = false; 
             }
         });
@@ -74,13 +97,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ email, password })
                 });
                 const data = await response.json();
+                
                 if (response.ok) {
                     localStorage.setItem('token', data.token);
                     window.location.replace('dashboard.html');
-                } else { throw new Error(data.error); }
+                } else { 
+                    throw new Error(data.error); 
+                }
             } catch (error) {
+                // If they aren't verified, this will show the backend's "Please verify your email" error
                 alert(error.message);
-                submitBtn.textContent = 'Login';
+                submitBtn.innerHTML = 'Log In to Dashboard <i class="fas fa-arrow-right" style="margin-left: 8px;"></i>';
                 submitBtn.disabled = false;
             }
         });

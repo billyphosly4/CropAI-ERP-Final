@@ -1,68 +1,80 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+// backend/controllers/aiController.js
+const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
+const path = require('path');
 const { Detection } = require('../models/mongoModels');
 
-// Create an array of keys for rotation
-const apiKeys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2];
+let model;
 
-const analyzeCropImage = async (filePath, mimeType, userId = null, keyIndex = 0) => {
-    // If we have tried all keys and they are all throttled
-    if (keyIndex >= apiKeys.length) {
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-        throw new Error("QUOTA EXHAUSTED: All API keys have reached their limit for today.");
-    }
-
+// 1. Load the Local Model into memory on server start
+const loadModel = async () => {
     try {
-        // Initialize with the current key index
-        const genAI = new GoogleGenerativeAI(apiKeys[keyIndex]);
+        // Point to the model.json file you downloaded from Teachable Machine
+        const modelPath = path.join(__dirname, '../ml_model/model.json');
+        const handler = tf.io.fileSystem(modelPath);
+        model = await tf.loadLayersModel(handler);
+        console.log('🧠 Local Edge AI Model Loaded Successfully');
+    } catch (error) {
+        console.warn('⚠️ Local AI Model missing. Please place model files in backend/ml_model/');
+    }
+};
+loadModel();
+
+// 2. Define your Classes (THIS MUST MATCH YOUR TEACHABLE MACHINE ORDER EXACTLY)
+// For example, if Class 1 was Healthy Maize, Class 2 was Streak Virus...
+const CLASS_LABELS = [
+    { crop: "Maize", disease: "Healthy", status: "Healthy", treatments: ["Continue normal maintenance."] },
+    { crop: "Maize", disease: "Streak Virus", status: "Infected", treatments: ["Uproot infected plants", "Use resistant seed varieties"] },
+    { crop: "Tomato", disease: "Late Blight", status: "Infected", treatments: ["Apply copper-based fungicide", "Ensure good plant spacing"] }
+];
+
+// 3. The main analysis function called by your routes
+const analyzeCropImage = async (filePath, mimeType, userId = null) => {
+    try {
+        if (!model) throw new Error("Local AI Model is offline.");
+
+        // Read image and convert to a Tensor (Matrix)
+        const imageBuffer = fs.readFileSync(filePath);
+        const tfImage = tf.node.decodeImage(imageBuffer, 3); // 3 channels for RGB
+
+        // Teachable Machine models require 224x224 images
+        const resizedImage = tf.image.resizeBilinear(tfImage, [224, 224]);
+        const expandedImage = resizedImage.expandDims(0);
+        const normalizedImage = expandedImage.div(255.0); // Normalize pixels to 0-1
+
+        // Run the prediction
+        const predictionsArray = await model.predict(normalizedImage).data();
         
-        // Using the model confirmed in your 'modesl.js' output
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-2.0-flash-lite-001" 
-        });
-
-        const prompt = `Analyze this crop leaf image. Respond ONLY with a raw JSON object. 
-        Structure: {"crop": "string", "disease": "string", "status": "Healthy/Infected", "treatments": ["string"]}`;
-
-        const imagePart = {
-            inlineData: {
-                data: Buffer.from(fs.readFileSync(filePath)).toString("base64"),
-                mimeType: mimeType
-            }
-        };
-
-        const result = await model.generateContent([prompt, imagePart]);
-        const response = await result.response;
-        const text = response.text();
-
-        // Robust JSON extraction
-        const start = text.indexOf('{');
-        const end = text.lastIndexOf('}') + 1;
-        if (start === -1) throw new Error("AI failed to return valid JSON");
+        // Find the index with the highest probability
+        const highestProbIndex = predictionsArray.indexOf(Math.max(...predictionsArray));
         
-        const aiData = JSON.parse(text.substring(start, end));
+        // Match the index to our labels array
+        const aiData = CLASS_LABELS[highestProbIndex];
+        
+        // Add a confidence score (e.g., 98%)
+        aiData.confidence = Math.round(predictionsArray[highestProbIndex] * 100);
 
-        // Save real record to MongoDB
+        // Memory Cleanup (CRITICAL: Prevents your Node server from crashing)
+        tfImage.dispose();
+        resizedImage.dispose();
+        expandedImage.dispose();
+        normalizedImage.dispose();
+
+        // Save the result to MongoDB History
         const detectionRecord = await Detection.create({
             user_id: userId,
             ...aiData
         });
 
-        // Cleanup
+        // Delete the temporary uploaded image file
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        
         return detectionRecord;
 
     } catch (error) {
-        // If we hit a 429 (Rate Limit), rotate to the next key automatically
-        if (error.message.includes('429')) {
-            console.warn(`⚠️ Key ${keyIndex + 1} throttled. Swapping to Key ${keyIndex + 2}...`);
-            return analyzeCropImage(filePath, mimeType, userId, keyIndex + 1);
-        }
-
-        // Cleanup file for any other error
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-        console.error(`AI Error (Key ${keyIndex + 1}):`, error.message);
-        throw error;
+        console.error("Local AI Controller Error:", error.message);
+        throw new Error("Failed to process image through local AI.");
     }
 };
 
