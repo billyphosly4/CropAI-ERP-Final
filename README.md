@@ -43,6 +43,7 @@ Utilizing **DeepSeek V3.2**, the system analyzes real-time IoT data (Temperature
 - **Featherless.ai** API Key
 
 ### 2. Clone & Install
+```bash
 git clone [https://github.com/lamartine587/CropAI-ERP-Final.git](https://github.com/lamartine587/CropAI-ERP-Final.git)
 cd CropAI-ERP-Final/Group_project/backend
 npm install
