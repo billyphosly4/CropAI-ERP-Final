@@ -16,22 +16,25 @@
                 <i class="fas fa-leaf"></i>
                 <span>CropAI</span>
             </div>
-            <ul class="nav-menu">
+            <ul class="nav-menu" id="navMenu">
                 <li><a href="index.html" class="active">Home</a></li>
                 <li><a href="dashboard.html">Dashboard</a></li>
                 <li><a href="#features">Features</a></li>
                 <li><a href="#about">About</a></li>
                 <li><a href="#contact">Contact</a></li>
             </ul>
-            <div class="nav-buttons">
+            <div class="nav-buttons" id="navButtons">
                 <button class="btn-secondary">Login</button>
                 <button class="btn-primary">Sign Up</button>
             </div>
-            <div class="hamburger">
+            <div class="hamburger" id="hamburger">
                 <i class="fas fa-bars"></i>
             </div>
         </div>
     </nav>
+
+    <!-- Menu Overlay (for background dim effect) -->
+    <div class="menu-overlay" id="menuOverlay"></div>
 
     <section class="hero">
         <div class="hero-container">
@@ -195,6 +198,61 @@
             </div>
         </div>
     </footer>
+
+    <script>
+        // Hamburger menu functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const hamburger = document.getElementById('hamburger');
+            const navMenu = document.getElementById('navMenu');
+            const navButtons = document.getElementById('navButtons');
+            const menuOverlay = document.getElementById('menuOverlay');
+            
+            function toggleMenu() {
+                hamburger.classList.toggle('active');
+                navMenu.classList.toggle('show');
+                navButtons.classList.toggle('show');
+                menuOverlay.classList.toggle('show');
+                document.body.classList.toggle('menu-open');
+            }
+
+            // Toggle menu on hamburger click
+            hamburger.addEventListener('click', toggleMenu);
+
+            // Close menu when clicking on overlay
+            if (menuOverlay) {
+                menuOverlay.addEventListener('click', toggleMenu);
+            }
+
+            // Close menu when clicking on any nav link
+            document.querySelectorAll('.nav-menu a').forEach(link => {
+                link.addEventListener('click', () => {
+                    if (navMenu.classList.contains('show')) {
+                        toggleMenu();
+                    }
+                });
+            });
+
+            // Close menu when clicking on login/signup buttons (mobile only)
+            document.querySelectorAll('.nav-buttons button').forEach(button => {
+                button.addEventListener('click', () => {
+                    if (window.innerWidth <= 968 && navMenu.classList.contains('show')) {
+                        toggleMenu();
+                    }
+                });
+            });
+
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                if (window.innerWidth > 968) {
+                    hamburger.classList.remove('active');
+                    navMenu.classList.remove('show');
+                    navButtons.classList.remove('show');
+                    if (menuOverlay) menuOverlay.classList.remove('show');
+                    document.body.classList.remove('menu-open');
+                }
+            });
+        });
+    </script>
 
     <script src="js/main.js"></script>
 </body>

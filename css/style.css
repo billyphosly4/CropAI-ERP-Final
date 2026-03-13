@@ -40,6 +40,44 @@ body {
     top: 0;
     z-index: 1000;
 }
+/* Hamburger Menu Styles */
+.hamburger {
+    display: none;
+    font-size: 1.8rem;
+    color: #2e7d32;
+    cursor: pointer;
+    z-index: 1001;
+    transition: all 0.3s ease;
+}
+
+.hamburger:hover {
+    transform: scale(1.1);
+    color: #1b5e20;
+}
+
+.hamburger.active i:before {
+    content: "\f00d"; /* FontAwesome X icon */
+}
+
+/* Menu Overlay */
+.menu-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(3px);
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.menu-overlay.show {
+    display: block;
+    opacity: 1;
+}
 
 .nav-container {
     max-width: 1400px;
